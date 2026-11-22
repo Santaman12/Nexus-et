@@ -1,0 +1,28 @@
+{
+  "name": "nexus",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NEXUS - voice-first personal assistant",
+  "workspaces": [
+    "apps/*",
+    "services/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:api": "npm run dev -w @nexus/api",
+    "dev:web": "npm run dev -w @nexus/web",
+    "build": "npm run build -w @nexus/core && npm run build -w @nexus/api && npm run build -w @nexus/web",
+    "typecheck": "npm run typecheck -w @nexus/core && npm run typecheck -w @nexus/api && npm run typecheck -w @nexus/web",
+    "test": "npm run test -w @nexus/api && npm run test -w @nexus/web",
+    "clean": "npm run clean --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}
