@@ -42,8 +42,10 @@ const MALE_VOICE_KEYWORDS = [
   'steven',
   'andrew',
   'brian',
+  'ameha',
 ];
 
+// የሴት ድምጾች ተለይተው ይታወቁ ዘንድ ብቻ (በፍጹም አይመረጡም)
 const FEMALE_VOICE_KEYWORDS = [
   'female',
   'woman',
@@ -67,6 +69,21 @@ const FEMALE_VOICE_KEYWORDS = [
   'chloe',
   'michelle',
   'natasha',
+  'mekdes',
+  'hedda',
+  'katja',
+  'amelie',
+  'elsa',
+  'sara',
+  'helena',
+  'sonia',
+  'libby',
+  'allison',
+  'joanna',
+  'kendra',
+  'kimberly',
+  'salli',
+  'ivy',
 ];
 
 export class BrowserSpeechOutput implements SpeechOutputProvider {
@@ -102,6 +119,7 @@ export class BrowserSpeechOutput implements SpeechOutputProvider {
 
   private isMaleVoice(voice: SpeechSynthesisVoice): boolean {
     const label = `${voice.name} ${voice.voiceURI}`.toLowerCase();
+    if (FEMALE_VOICE_KEYWORDS.some((kw) => label.includes(kw))) return false;
     return MALE_VOICE_KEYWORDS.some((kw) => label.includes(kw));
   }
 
@@ -110,35 +128,38 @@ export class BrowserSpeechOutput implements SpeechOutputProvider {
     return FEMALE_VOICE_KEYWORDS.some((kw) => label.includes(kw));
   }
 
+  /**
+   * የወንድ ድምጽ ብቻ ይመርጣል። የሴት ድምጽ በምንም ሁኔታ አይመረጥም።
+   * ወንድ ካልተገኘ ሴት ያልሆነ ድምጽ፣ እሱም ከሌለ null (በዚህ ጊዜ ዝቅተኛ pitch ይጠቀማል)።
+   */
   private selectMaleVoice(language?: string): SpeechSynthesisVoice | null {
-    if (this.voices.length === 0) return null;
+    const nonFemale = this.voices.filter((voice) => !this.isFemaleVoice(voice));
+    if (nonFemale.length === 0) return null;
 
     const normalized = (language ?? '').toLowerCase();
     const prefix = normalized.split('-')[0];
 
     const langPool = normalized
-      ? this.voices.filter(
+      ? nonFemale.filter(
           (voice) =>
             voice.lang.toLowerCase() === normalized ||
             (prefix ? voice.lang.toLowerCase().startsWith(prefix) : false),
         )
       : [];
 
-    // 1. በተመረጠው ቋንቋ ውስጥ የወንድ ድምጽ ፈልግ
+    // 1. በተመረጠው ቋንቋ ውስጥ የወንድ ድምጽ
     const langMale = langPool.find((voice) => this.isMaleVoice(voice));
     if (langMale) return langMale;
 
-    // 2. በሁሉም ቋንቋዎች ውስጥ የወንድ ድምጽ ፈልግ
-    const anyMale = this.voices.find((voice) => this.isMaleVoice(voice));
+    // 2. በሁሉም ቋንቋዎች ውስጥ የወንድ ድምጽ
+    const anyMale = nonFemale.find((voice) => this.isMaleVoice(voice));
     if (anyMale) return anyMale;
 
-    // 3. የሴት ድምጽ ያልሆነውን ብቻ ምረጥ (በምንም ሁኔታ female እንዳይመረጥ)
-    const nonFemaleInLang = langPool.find((voice) => !this.isFemaleVoice(voice));
-    if (nonFemaleInLang) return nonFemaleInLang;
-
-    const anyNonFemale = this.voices.find((voice) => !this.isFemaleVoice(voice));
-    return anyNonFemale ?? null;
+    // ወንድ ድምጽ ካልተገኘ null — ጠሪው ወደ Backend (ወንድ) ይቀየራል
+    return null;
   }
+
+  private readonly fallback = new BackendSpeechOutput();
 
   async speak(
     request: SpeechRequest,
@@ -152,11 +173,16 @@ export class BrowserSpeechOutput implements SpeechOutputProvider {
     await this.waitForVoices();
     window.speechSynthesis.cancel();
 
+    const voice = this.selectMaleVoice(request.language);
+    if (!voice) {
+      // በዚህ መሳሪያ ላይ ወንድ ድምጽ የለም → ሁልጊዜ ወንድ የሆነውን Backend TTS ተጠቀም
+      return this.fallback.speak(request, callbacks);
+    }
+
     return new Promise((resolve, reject) => {
       const utterance = new SpeechSynthesisUtterance(request.text);
       utterance.lang = request.language ?? window.navigator.language;
-      const voice = this.selectMaleVoice(request.language);
-      if (voice) utterance.voice = voice;
+      utterance.voice = voice;
       utterance.pitch = 0.82;
       utterance.rate = Math.min(2, Math.max(0.5, request.rate ?? 1));
       utterance.volume = Math.min(1, Math.max(0, request.volume ?? 1));
@@ -206,6 +232,7 @@ export class BrowserSpeechOutput implements SpeechOutputProvider {
 
   stop(): void {
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    this.fallback.stop();
   }
 }
 
@@ -249,9 +276,14 @@ export class BackendSpeechOutput implements SpeechOutputProvider {
     return chunks.length > 0 ? chunks : [text];
   }
 
+  // ሁልጊዜ ወንድ ድምጽ ብቻ ወደ backend ይላካል
+  private maleRequest(request: SpeechRequest, text: string): SpeechRequest {
+    return { ...request, gender: 'male', voice: 'male', text } as SpeechRequest;
+  }
+
   async warmup(): Promise<void> {
     try {
-      await api.synthesizeSpeech({ text: 'OK' });
+      await api.synthesizeSpeech(this.maleRequest({ text: 'OK' } as SpeechRequest, 'OK'));
     } catch {
       // Warmup is best-effort only.
     }
@@ -316,7 +348,7 @@ export class BackendSpeechOutput implements SpeechOutputProvider {
         decoded.set(
           index,
           api
-            .synthesizeSpeech({ ...request, gender: 'male', voice: 'male', text: chunks[index]! } as SpeechRequest)
+            .synthesizeSpeech(this.maleRequest(request, chunks[index]!))
             .then((blob) => blob.arrayBuffer())
             .then((buffer) => context.decodeAudioData(buffer)),
         );
