@@ -1,3 +1,4 @@
+
 import 'dotenv/config';
 
 export const config = {
@@ -20,7 +21,7 @@ export const config = {
   geminiApiKey: process.env.GEMINI_API_KEY ?? '',
   geminiModel: process.env.GEMINI_MODEL ?? 'gemini-3.5-flash-lite',
   geminiTtsModel: process.env.GEMINI_TTS_MODEL ?? 'gemini-3.8-flash-tts',
-  geminiTtsVoice: process.env.GEMINI_TTS_VOICE ?? 'Fenrir',
+  geminiTtsVoice: process.env.GEMINI_TTS_VOICE ?? 'Algenib',
   geminiModelFallbacks: (process.env.GEMINI_MODEL_FALLBACKS ?? 'gemini-3.5-flash,gemini-3.6-flash,gemini-3.1-flash-lite')
     .split(',')
     .map((name) => name.trim())
