@@ -30,9 +30,9 @@ export function unlockAudioPlayback(): void {
 }
 
 /**
- * NEXUS browser voice is disabled.
- * All speech is generated through the backend Gemini TTS.
- * The backend uses GEMINI_TTS_VOICE=Algenib.
+ * NEXUS uses backend Gemini TTS only.
+ * Browser speech synthesis is disabled.
+ * Preferred male voice: Charon.
  */
 export class BrowserSpeechOutput implements SpeechOutputProvider {
   readonly name = 'nexus-male-backend-speech';
@@ -65,25 +65,17 @@ export class BackendSpeechOutput implements SpeechOutputProvider {
   private generation = 0;
 
   /**
-   * Remove caller-selected voice names.
-   * Backend Gemini configuration selects the voice.
+   * Force Gemini TTS to use Charon.
+   * Do not allow caller-selected voices to override it.
    */
   private maleRequest(
     request: SpeechRequest,
     text: string,
   ): SpeechRequest {
-    const {
-      voice: _voice,
-      gender: _gender,
-      ...rest
-    } = request as SpeechRequest & {
-      voice?: string;
-      gender?: string;
-    };
-
     return {
-      ...rest,
+      ...request,
       text,
+      voice: 'Charon',
     } as SpeechRequest;
   }
 
@@ -145,6 +137,7 @@ export class BackendSpeechOutput implements SpeechOutputProvider {
       await api.synthesizeSpeech({
         text: 'NEXUS is ready.',
         language: 'en-US',
+        voice: 'Charon',
       });
     } catch {
       // Warmup is best-effort only.
