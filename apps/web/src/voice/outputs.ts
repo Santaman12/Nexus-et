@@ -20,6 +20,55 @@ export function unlockAudioPlayback(): void {
   }
 }
 
+const MALE_VOICE_KEYWORDS = [
+  'male',
+  'man',
+  'david',
+  'mark',
+  'daniel',
+  'james',
+  'arthur',
+  'george',
+  'guy',
+  'ryan',
+  'aaron',
+  'thomas',
+  'alex',
+  'paul',
+  'christopher',
+  'eric',
+  'jonathan',
+  'kevin',
+  'steven',
+  'andrew',
+  'brian',
+];
+
+const FEMALE_VOICE_KEYWORDS = [
+  'female',
+  'woman',
+  'girl',
+  'zira',
+  'samantha',
+  'victoria',
+  'karen',
+  'moira',
+  'tessa',
+  'fiona',
+  'hazel',
+  'aria',
+  'jenny',
+  'susan',
+  'linda',
+  'catherine',
+  'emma',
+  'olivia',
+  'ava',
+  'chloe',
+  'michelle',
+  'natasha',
+];
+
 export class BrowserSpeechOutput implements SpeechOutputProvider {
   readonly name = 'browser-speech-synthesis';
   private voices: SpeechSynthesisVoice[] = [];
@@ -51,18 +100,50 @@ export class BrowserSpeechOutput implements SpeechOutputProvider {
     });
   }
 
-  private selectVoice(language?: string): SpeechSynthesisVoice | null {
-    if (!language || this.voices.length === 0) return null;
-    const normalized = language.toLowerCase();
-    const prefix = normalized.split('-')[0];
-    return (
-      this.voices.find((voice) => voice.lang.toLowerCase() === normalized) ??
-      this.voices.find((voice) => voice.lang.toLowerCase().startsWith(prefix)) ??
-      null
-    );
+  private isMaleVoice(voice: SpeechSynthesisVoice): boolean {
+    const label = `${voice.name} ${voice.voiceURI}`.toLowerCase();
+    return MALE_VOICE_KEYWORDS.some((kw) => label.includes(kw));
   }
 
-  async speak(request: SpeechRequest, callbacks: { onStart?: () => void; onEnd?: () => void; onError?: (error: Error) => void; onProgress?: (fraction: number) => void } = {}): Promise<void> {
+  private isFemaleVoice(voice: SpeechSynthesisVoice): boolean {
+    const label = `${voice.name} ${voice.voiceURI}`.toLowerCase();
+    return FEMALE_VOICE_KEYWORDS.some((kw) => label.includes(kw));
+  }
+
+  private selectMaleVoice(language?: string): SpeechSynthesisVoice | null {
+    if (this.voices.length === 0) return null;
+
+    const normalized = (language ?? '').toLowerCase();
+    const prefix = normalized.split('-')[0];
+
+    const langPool = normalized
+      ? this.voices.filter(
+          (voice) =>
+            voice.lang.toLowerCase() === normalized ||
+            (prefix ? voice.lang.toLowerCase().startsWith(prefix) : false),
+        )
+      : [];
+
+    // 1. በተመረጠው ቋንቋ ውስጥ የወንድ ድምጽ ፈልግ
+    const langMale = langPool.find((voice) => this.isMaleVoice(voice));
+    if (langMale) return langMale;
+
+    // 2. በሁሉም ቋንቋዎች ውስጥ የወንድ ድምጽ ፈልግ
+    const anyMale = this.voices.find((voice) => this.isMaleVoice(voice));
+    if (anyMale) return anyMale;
+
+    // 3. የሴት ድምጽ ያልሆነውን ብቻ ምረጥ (በምንም ሁኔታ female እንዳይመረጥ)
+    const nonFemaleInLang = langPool.find((voice) => !this.isFemaleVoice(voice));
+    if (nonFemaleInLang) return nonFemaleInLang;
+
+    const anyNonFemale = this.voices.find((voice) => !this.isFemaleVoice(voice));
+    return anyNonFemale ?? null;
+  }
+
+  async speak(
+    request: SpeechRequest,
+    callbacks: { onStart?: () => void; onEnd?: () => void; onError?: (error: Error) => void; onProgress?: (fraction: number) => void } = {},
+  ): Promise<void> {
     if (!('speechSynthesis' in window)) {
       callbacks.onError?.(new Error('Browser speech synthesis is not available'));
       return;
@@ -74,8 +155,9 @@ export class BrowserSpeechOutput implements SpeechOutputProvider {
     return new Promise((resolve, reject) => {
       const utterance = new SpeechSynthesisUtterance(request.text);
       utterance.lang = request.language ?? window.navigator.language;
-      const voice = this.selectVoice(request.language);
+      const voice = this.selectMaleVoice(request.language);
       if (voice) utterance.voice = voice;
+      utterance.pitch = 0.82;
       utterance.rate = Math.min(2, Math.max(0.5, request.rate ?? 1));
       utterance.volume = Math.min(1, Math.max(0, request.volume ?? 1));
 
@@ -234,14 +316,13 @@ export class BackendSpeechOutput implements SpeechOutputProvider {
         decoded.set(
           index,
           api
-            .synthesizeSpeech({ ...request, text: chunks[index]! })
+            .synthesizeSpeech({ ...request, gender: 'male', voice: 'male', text: chunks[index]! } as SpeechRequest)
             .then((blob) => blob.arrayBuffer())
             .then((buffer) => context.decodeAudioData(buffer)),
         );
       }
       return decoded.get(index)!;
     };
-    // Prefetch up to two chunks ahead so playback never waits on the network.
     const prefetch = (from: number) => {
       for (let i = from; i < Math.min(from + 2, chunks.length); i += 1) {
         void synthesize(i).catch(() => undefined);
